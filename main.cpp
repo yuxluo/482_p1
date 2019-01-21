@@ -1,43 +1,85 @@
 #include <iostream>
 #include "thread.h"
+#include <vector>
+#include <fstream> 
+#include <deque> 
 
 using std::cout;
 using std::endl;
+using std::vector;
+using std::ifstream;
+using std::deque;
 
-mutex mutex1;
-cv cv1;
+mutex the_mutex; 
+cv the_cv; 
 
-int child_done = 0;		// global variable; shared between the two threads
+vector<deque<int>> input; 
+vector<int> current_queue; 
 
-void child(void *a)
-{
-    char *message = (char *) a;
-    mutex1.lock();
-    cout << "child called with message " << message << ", setting child_done = 1" << endl;
-    child_done = 1;
-    cv1.signal();
-    mutex1.unlock();
+size_t max_disk_queue;
+int current_track = 0;
+int num_requester;
+bool queue_is_optimal = false; 
+
+void requester(int a);
+void read_input(int argc, char *argv[]);
+void server(int argc, char *argv[]);
+
+
+int main(int argc, char *argv[]) {
+	max_disk_queue = atoi(argv[1]); 
+
+	num_requester = argc - 2; 
+
+	read_input(argc, argv); 
+
+	cpu::boot((thread_startfunc_t) server, (void *) 100, 0);
+
+	cout << "main reach end" << endl;
+	return 0; 
 }
 
-void parent(void *a)
-{
-    intptr_t arg = (intptr_t) a;
-    mutex1.lock();
-    cout << "parent called with arg " << arg << endl;
-    mutex1.unlock();
+void read_input(int argc, char *argv[]) {
+	input.resize(argc - 2); 
+	int temp; 
 
-    thread t1 ((thread_startfunc_t) child, (void *) "test message");
-
-    mutex1.lock();
-    while (!child_done) {
-        cout << "parent waiting for child to run\n";
-        cv1.wait(mutex1);
-    }
-    cout << "parent finishing" << endl;
-    mutex1.unlock();
+	for (int i = 2; i < argc; i++) {
+		ifstream infile (argv[i]);
+		while(infile >> temp) {
+			input[i - 2].push_back(temp);
+		}
+	}
+	cout << "read reach end" << endl; 
 }
 
-int main()
-{
-    cpu::boot((thread_startfunc_t) parent, (void *) 100, 0);
+void server(int argc, char *argv[]) { //性感荷官在线发牌
+	vector<thread*> threads; 
+
+	for (int i = 0; i < num_requester; i++) {
+		threads.push_back(new thread((thread_startfunc_t) requester, (void *) i));
+	}
+
+	for (int i = 0; i < 3; i++) {
+		cout << current_queue[i] << " ";
+	}
+
+	for (int i = 0; i < num_requester; i++) {
+		threads[i]->join();
+	}
+
+	cout << "server reach end" << endl;
 }
+
+
+void requester(int a) {
+	while(!input[a].empty()) {
+		the_mutex.lock();
+		if (current_queue.size() < max_disk_queue){
+			current_queue.push_back(input[a].front());
+			input[a].pop_front(); 
+		}
+		the_mutex.unlock();
+	}
+	cout << "requester " << a << " reach end" << endl; 
+}
+
